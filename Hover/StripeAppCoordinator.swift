@@ -1,9 +1,7 @@
-import UIKit
 import SwiftUI
 import StripeTerminal
 
-@UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class StripeSetupDelegate: NSObject, UIApplicationDelegate {
 
     var window: UIWindow?
 
@@ -11,6 +9,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        print("🔍 AppDelegate didFinishLaunching START")
 
         Terminal.setTokenProvider(APIClient.shared)
         print("✅ Stripe Terminal token provider has been set")
@@ -22,14 +21,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             print("⚠️ UIBackgroundModes key is missing at runtime.")
         }
 
-        // Set up the SwiftUI root view
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIHostingController(rootView: MainView())
-        self.window = window
-        window.makeKeyAndVisible()
-        self.window = window
-
-        print("🪟 Root view controller: \(String(describing: window.rootViewController))")
+        print("🪟 Root view controller: \(String(describing: window?.rootViewController))")
         print("🖥 App bundle identifier: \(Bundle.main.bundleIdentifier ?? "nil")")
         print("📁 Info.plist keys:")
         for (key, value) in Bundle.main.infoDictionary ?? [:] {
@@ -42,6 +34,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             print("⚠️ NSLocationWhenInUseUsageDescription is MISSING at runtime")
         }
 
+        print("✅ AppDelegate completed setup — about to return true")
         return true
     }
 }
@@ -74,6 +67,12 @@ class APIClient: ConnectionTokenProvider {
 
             print("✅ Received connection token")
             completion(secret, nil)
+            print("🚀 Connection token fetch initiated")
+            print("📡 Terminal connection status: \(Terminal.shared.connectionStatus.rawValue)")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                print("🧪 Stripe Terminal status 1s later: \(Terminal.shared.connectionStatus.rawValue)")
+            }
         }.resume()
     }
 }

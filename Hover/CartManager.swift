@@ -10,12 +10,19 @@ import Foundation
 import SwiftUI
 
 class CartManager: ObservableObject {
+    init() {
+        print("🛒 CartManager initialized")
+    }
     @Published var items: [Product: Int] = [:]
 
     func addToCart(_ product: Product) {
         items[product, default: 0] += 1
         print("Added \(product.name) to cart. Quantity: \(items[product]!)")
 
+    }
+    
+    func add(product: Product) {
+        items[product, default: 0] += 1
     }
 
     func removeFromCart(_ product: Product) {
@@ -34,5 +41,7 @@ class CartManager: ObservableObject {
         items.reduce(0) { $0 + ($1.key.price * Double($1.value)) }
     }
     
-    
+    func clearCart() {
+        items.removeAll()
+    }
 }

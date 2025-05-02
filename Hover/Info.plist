@@ -15,12 +15,12 @@
                     <string>Default Configuration</string>
                     <key>UISceneDelegateClassName</key>
                     <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-                    <key>UISceneStoryboardFile</key>
-                    <string>Main</string>
                 </dict>
             </array>
         </dict>
     </dict>
+    <key>NSCameraUsageDescription</key>
+    <string>This app uses the camera to scan product barcodes.</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>bluetooth-central</string>
@@ -31,5 +31,9 @@
     <string>This app uses Bluetooth to communicate with payment readers.</string>
 <key>NSLocationWhenInUseUsageDescription</key>
 <string>Location access is required to discover and connect to payment readers nearby.</string>
+<key>SUPABASE_URL</key>
+<string>https://sswfohwqbyoeugfsxvkd.supabase.co</string>
+<key>SUPABASE_ANON_KEY</key>
+<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzd2ZvaHdxYnlvZXVnZnN4dmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0OTU5MzIsImV4cCI6MjA1OTA3MTkzMn0.hlp4QdeGwvu2saYutHwSZG3Em_b8W9gZwltfZbuxlY8</string>
 </dict>
 </plist>
