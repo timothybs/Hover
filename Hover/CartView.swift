@@ -39,6 +39,19 @@ struct CartView: View {
                         .cornerRadius(10)
                 }
                 .padding()
+
+                Button(action: {
+                    let testProduct = Product(id: "test-1", name: "Test Tap to Pay £1", price: 1.00)
+                    cartManager.add(product: testProduct)
+                }) {
+                    Text("🧪 Add £1 Test Product")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .padding()
             }
             .navigationTitle("🛒 Cart")
 
