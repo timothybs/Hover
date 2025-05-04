@@ -41,10 +41,10 @@ struct CartView: View {
                 .padding()
 
                 Button(action: {
-                    let testProduct = Product(id: "test-1", name: "Test Tap to Pay £1", price: 1.00)
+                    let testProduct = Product(id: "test-1", name: "Test Tap to Pay £0.30", price: 0.30)
                     cartManager.add(product: testProduct)
                 }) {
-                    Text("🧪 Add £1 Test Product")
+                    Text("🧪 Add £0.30 Test Product")
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.blue)
@@ -53,7 +53,9 @@ struct CartView: View {
                 }
                 .padding()
             }
-            .navigationTitle("🛒 Cart")
+            .onReceive(NotificationCenter.default.publisher(for: .paymentDidFailOrCancel)) { _ in
+                cartManager.paymentInProgress = false
+            }
 
             .sheet(isPresented: $showScanner) {
                 BarcodeScannerScreen()

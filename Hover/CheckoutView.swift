@@ -292,7 +292,6 @@ struct CheckoutView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("💳 Checkout")
             .alert(isPresented: $showResult) {
                 if paymentSuccess {
                     return Alert(

@@ -9,34 +9,79 @@ import SwiftUI
 
 struct ProductsView: View {
     @EnvironmentObject var cartManager: CartManager
+    @EnvironmentObject var productCache: ProductCache
 
-    let mockProducts = [
-        Product(id: "tshirt", name: "T-Shirt", price: 19.99),
-        Product(id: "hoodie", name: "Hoodie", price: 39.99),
-        Product(id: "sneakers", name: "Sneakers", price: 89.99)
+    @State private var searchText = ""
+    @State private var showingScanner = false
+
+    let columns = [
+        GridItem(.adaptive(minimum: 120), spacing: 16)
     ]
+    
 
     var body: some View {
         NavigationView {
-            List(mockProducts) { product in
+            VStack {
+                let isLoading = productCache.productsByBarcode.isEmpty
+                let filteredProducts = productCache.productsByBarcode.values
+                    .filter {
+                        searchText.isEmpty ||
+                        $0.name.lowercased().contains(searchText.lowercased()) ||
+                        $0.id.contains(searchText)
+                    }
+                    .sorted { $0.name < $1.name }
                 HStack {
-                    VStack(alignment: .leading) {
-                        Text(product.name)
-                            .font(.headline)
-                        Text(String(format: "$%.2f", product.price))
-                            .font(.subheadline)
+                    TextField("Search for a product", text: $searchText)
+                        .padding(10)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    Button(action: {
+                        showingScanner = true
+                    }) {
+                        Image(systemName: "barcode.viewfinder")
+                            .imageScale(.large)
+                            .padding(.leading, 4)
                     }
-                    Spacer()
-                    Button("Add to Cart") {
-                        print("Tapped add for \(product.name)")
-                            cartManager.addToCart(product)
-                            print("Cart now has: \(cartManager.items)")
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
-                .padding(.vertical, 4)
+                .padding()
+
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(filteredProducts, id: \.id) { product in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(product.name)
+                                        .font(.headline)
+                                    Text(String(format: "£%.2f", product.price))
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.systemGray5))
+                                .cornerRadius(8)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
             }
-            .navigationTitle("🛍️ Products")
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showingScanner) {
+                BarcodeScannerView { scannedCode in
+                    searchText = scannedCode
+                    showingScanner = false
+                }
+            }
         }
     }
+}
+
+#Preview {
+    ProductsView()
+        .environmentObject(CartManager())
+        .environmentObject(ProductCache())
 }

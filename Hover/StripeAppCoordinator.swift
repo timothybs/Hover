@@ -3,8 +3,6 @@ import StripeTerminal
 
 class StripeSetupDelegate: NSObject, UIApplicationDelegate {
 
-    var window: UIWindow?
-
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -20,8 +18,7 @@ class StripeSetupDelegate: NSObject, UIApplicationDelegate {
         } else {
             print("⚠️ UIBackgroundModes key is missing at runtime.")
         }
-
-        print("🪟 Root view controller: \(String(describing: window?.rootViewController))")
+        
         print("🖥 App bundle identifier: \(Bundle.main.bundleIdentifier ?? "nil")")
         print("📁 Info.plist keys:")
         for (key, value) in Bundle.main.infoDictionary ?? [:] {

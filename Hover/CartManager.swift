@@ -14,6 +14,7 @@ class CartManager: ObservableObject {
         print("🛒 CartManager initialized")
     }
     @Published var items: [Product: Int] = [:]
+    @Published var paymentInProgress = false
 
     func addToCart(_ product: Product) {
         items[product, default: 0] += 1
@@ -43,5 +44,6 @@ class CartManager: ObservableObject {
     
     func clearCart() {
         items.removeAll()
+        paymentInProgress = false
     }
 }

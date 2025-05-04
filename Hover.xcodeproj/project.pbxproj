@@ -185,9 +185,12 @@
 				DEVELOPMENT_TEAM = 9V9RVUGC92;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Hover/Info.plist;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "We use Bluetooth to discover and simulate card readers for checkout.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to communicate with payment readers.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app uses the camera to scan product barcodes.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Location access is required to discover and connect to payment readers nearby.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
@@ -217,9 +220,12 @@
 				DEVELOPMENT_TEAM = 9V9RVUGC92;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Hover/Info.plist;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "We use Bluetooth to discover and simulate card readers for checkout.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to communicate with payment readers.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app uses the camera to scan product barcodes.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Location access is required to discover and connect to payment readers nearby.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
