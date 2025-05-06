@@ -365,7 +365,7 @@ struct CheckoutView: View {
                         }
                         print("Charging \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: total)) ?? "£\(total)")")
                     }) {
-                        Text("Charge \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: total)) ?? "£\(total)")")
+                        Text("💳 Charge Card")
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.blue)
@@ -376,7 +376,7 @@ struct CheckoutView: View {
                     Button(action: {
                         createOpenBankingPayment()
                     }) {
-                        Text("Charge Bank")
+                        Text("🏦 Charge Bank")
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.green)
