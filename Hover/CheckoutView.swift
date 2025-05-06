@@ -1,9 +1,47 @@
-//
-//  CheckoutView.swift
-//  Hover
-//
-//  Created by Timothy Sumner on 01/05/2025.
-//
+enum PaymentRoute: Hashable, Codable {
+    case tapToPaySuccess
+    case openBankingSuccess
+    case cashSuccess(changeDue: String)
+
+    enum CodingKeys: CodingKey {
+        case type, changeDue
+    }
+
+    enum CaseType: String, Codable {
+        case tapToPaySuccess
+        case openBankingSuccess
+        case cashSuccess
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(CaseType.self, forKey: .type)
+
+        switch type {
+        case .tapToPaySuccess:
+            self = .tapToPaySuccess
+        case .openBankingSuccess:
+            self = .openBankingSuccess
+        case .cashSuccess:
+            let change = try container.decode(String.self, forKey: .changeDue)
+            self = .cashSuccess(changeDue: change)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        switch self {
+        case .tapToPaySuccess:
+            try container.encode(CaseType.tapToPaySuccess, forKey: .type)
+        case .openBankingSuccess:
+            try container.encode(CaseType.openBankingSuccess, forKey: .type)
+        case .cashSuccess(let changeDue):
+            try container.encode(CaseType.cashSuccess, forKey: .type)
+            try container.encode(changeDue, forKey: .changeDue)
+        }
+    }
+}
 
 import SwiftUI
 import StripeTerminal
@@ -43,6 +81,12 @@ class StripeTerminalManager: NSObject, ObservableObject {
     private var readerDelegate: MyMobileReaderDelegate?
     private var discoveryDelegate: _SimulatedDiscoveryDelegate?
     private var paymentCompletion: ((Bool) -> Void)?
+    var auth: AuthManager
+    
+    init(auth: AuthManager) {
+        self.auth = auth
+        super.init()
+    }
     
     func connectAndCharge(amount: Int, currency: String = "gbp", completion: @escaping (Bool) -> Void) {
         // If already connected, skip discovery and start payment flow
@@ -51,7 +95,11 @@ class StripeTerminalManager: NSObject, ObservableObject {
             self.startPaymentFlow(amount: amount, currency: currency)
             return
         }
-        self.paymentCompletion = completion
+        self.paymentCompletion = { success in
+            DispatchQueue.main.async {
+                completion(success)
+            }
+        }
         let builder = BluetoothScanDiscoveryConfigurationBuilder()
         builder.setSimulated(true)
         guard let discoveryConfig = try? builder.build() else {
@@ -84,7 +132,9 @@ class StripeTerminalManager: NSObject, ObservableObject {
             Terminal.shared.connectReader(reader, connectionConfig: connectionConfig) { connectedReader, error in
                 if let error = error {
                     print("Connection failed: \(error)")
-                    completion(false)
+                    DispatchQueue.main.async {
+                        self.paymentCompletion?(false)
+                    }
                 } else if let connectedReader = connectedReader {
                     print("Connected to reader: \(connectedReader.serialNumber)")
                     self.startPaymentFlow(amount: amount, currency: currency)
@@ -97,7 +147,9 @@ class StripeTerminalManager: NSObject, ObservableObject {
         Terminal.shared.discoverReaders(discoveryConfig, delegate: delegate) { error in
             if let error = error {
                 print("❌ Reader discovery failed: \(error)")
-                completion(false)
+                DispatchQueue.main.async {
+                    self.paymentCompletion?(false)
+                }
             } else {
                 print("✅ Reader discovery started")
             }
@@ -109,7 +161,12 @@ class StripeTerminalManager: NSObject, ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["amount": amount, "currency": currency]
+        let stripeAccount = auth.merchant?.stripe_account_id ?? ""
+        let body: [String: Any] = [
+            "amount": amount,
+            "currency": currency,
+            "stripeAccount": stripeAccount
+        ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         URLSession.shared.dataTask(with: request) { data, _, error in
@@ -150,7 +207,13 @@ class StripeTerminalManager: NSObject, ObservableObject {
 
                 Terminal.shared.collectPaymentMethod(paymentIntent, completion: { paymentIntent, error in
                     if let error = error {
-                        print("❌ Failed to collect payment: \(error)")
+                        let terminalError = error as NSError
+                        if terminalError.domain == ErrorDomain,
+                           terminalError.code == 2020 {
+                            print("⚠️ Payment was cancelled by the user")
+                        } else {
+                            print("❌ Failed to collect payment: \(error)")
+                        }
                         DispatchQueue.main.async {
                             self.paymentCompletion?(false)
                         }
@@ -218,10 +281,25 @@ class StripeTerminalManager: NSObject, ObservableObject {
 
 struct CheckoutView: View {
     @EnvironmentObject var cartManager: CartManager
-    @StateObject private var terminalManager = StripeTerminalManager()
-    @State private var isProcessing = false
+    @StateObject private var terminalManager: StripeTerminalManager
     @State private var showResult = false
     @State private var paymentSuccess = false
+    @State private var showingCashSheet = false
+    @State private var cashTendered: Double? = nil
+    @State private var cashChangeDue: String? = nil
+    @EnvironmentObject var auth: AuthManager
+    @State private var openBankingRedirectURL: String? = nil
+    @State private var openBankingPaymentIntentId: String? = nil
+    @State private var openBankingPaid: Bool = false
+    @State private var showPaymentSuccess = false
+    @State private var paymentMethodUsed: String = ""
+    @State private var extraMessage: String? = nil
+    @State private var shouldRouteToSuccessAfterSheet = false
+    
+    init() {
+        // This init will be overridden by body init, so we keep it empty
+        _terminalManager = StateObject(wrappedValue: StripeTerminalManager(auth: AuthManager()))
+    }
     
     var subtotal: Double {
         cartManager.totalPrice()
@@ -236,7 +314,7 @@ struct CheckoutView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 if cartManager.items.isEmpty {
                     Text("🛒 Nothing to checkout")
@@ -264,56 +342,290 @@ struct CheckoutView: View {
                     }
                     .padding()
                     
-                    if isProcessing {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                            .padding()
-                    } else {
-                        Button(action: {
-                            isProcessing = true
-                            terminalManager.connectAndCharge(amount: Int(total * 100)) { success in
-                                paymentSuccess = success
-                                showResult = true
-                                isProcessing = false
+                    Button(action: {
+                        terminalManager.connectAndCharge(amount: Int(total * 100)) { success in
+                            DispatchQueue.main.async {
+                                if success {
+                                    paymentSuccess = true
+                                    paymentMethodUsed = "tap-to-pay"
+                                    extraMessage = nil
+                                    showPaymentSuccess = true
+                                } else {
+                                    cartManager.clearCart()
+                                    paymentSuccess = false
+                                    openBankingPaid = false
+                                    openBankingRedirectURL = nil
+                                    openBankingPaymentIntentId = nil
+                                    // No-op needed for path
+                                }
                             }
-                            print("Charging \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: total)) ?? "£\(total)")")
-                        }) {
-                            Text("Charge \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: total)) ?? "£\(total)")")
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
                         }
-                        .padding(.horizontal)
+                        print("Charging \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: total)) ?? "£\(total)")")
+                    }) {
+                        Text("Charge \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: total)) ?? "£\(total)")")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
                     }
+                    .padding(.horizontal)
+                    Button(action: {
+                        createOpenBankingPayment()
+                    }) {
+                        Text("Charge Bank")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    Button("💵 Pay Cash") {
+                        showingCashSheet = true
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.orange)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .padding(.horizontal)
+                }
+                
+                // QR code display for open banking redirect URL
+                if let redirectURL = openBankingRedirectURL {
+                    if let qrImage = generateQRCode(from: redirectURL) {
+                        Text("Scan this:")
+                            .font(.headline)
+                            .padding(.top)
+                        Image(uiImage: qrImage)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 200, height: 200)
+                            .padding()
+                    }
+                }
+                // Show Open Banking payment success message
+                if openBankingPaid {
+                    Text("✅ Open Banking payment received!")
+                        .font(.title2)
+                        .foregroundColor(.green)
+                        .padding()
                 }
                 
                 Spacer()
             }
             .padding()
-            .alert(isPresented: $showResult) {
-                if paymentSuccess {
-                    return Alert(
-                        title: Text("✅ Payment Successful"),
-                        message: Text("Would you like a receipt?"),
-                        primaryButton: .default(Text("No")) {
-                            cartManager.clearCart()
-                        },
-                        secondaryButton: .default(Text("Yes"))
-                    )
-                } else {
-                    return Alert(
-                        title: Text("❌ Payment Failed"),
-                        message: Text("Please try again."),
-                        dismissButton: .default(Text("Try Again"))
-                    )
+            .onAppear {
+                terminalManager.auth = auth
+            }
+            .onChange(of: showingCashSheet) { isPresented in
+                if !isPresented && shouldRouteToSuccessAfterSheet {
+                    shouldRouteToSuccessAfterSheet = false
                 }
             }
+            // Inline Cash Payment UI
+            if showingCashSheet {
+                VStack(spacing: 16) {
+                    Text("Enter Cash Tendered")
+                        .font(.headline)
+
+                    HStack {
+                        ForEach([5.0, 10.0, 15.0, 20.0], id: \.self) { amount in
+                            Button("£\(Int(amount))") {
+                                cashTendered = amount
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(8)
+                        }
+                    }
+
+                    if let tendered = cashTendered {
+                        let change = tendered - total
+                        Text("Change due: £\(String(format: "%.2f", max(0, change)))")
+                            .font(.title2)
+                            .foregroundColor(change >= 0 ? .green : .red)
+                            .padding(.top)
+
+                        Button("Confirm Payment") {
+                            let changeString = "Change due: £\(String(format: "%.2f", max(0, change)))"
+                            cashChangeDue = changeString
+                            paymentSuccess = true
+                            showingCashSheet = false
+                            paymentMethodUsed = "cash"
+                            extraMessage = changeString
+                            showPaymentSuccess = true
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                }
+                .padding()
+            }
+        }
+        .navigationDestination(isPresented: $showPaymentSuccess) {
+            PaymentSuccessView(
+                amount: total,
+                paymentMethod: paymentMethodUsed,
+                extraMessage: extraMessage,
+                onReset: {
+                    cartManager.clearCart()
+                    paymentSuccess = false
+                    openBankingPaid = false
+                    openBankingRedirectURL = nil
+                    openBankingPaymentIntentId = nil
+                    cashChangeDue = nil
+                    showPaymentSuccess = false
+                }
+            )
         }
     }
     func connectToReaderAndCharge() {
         terminalManager.connectAndCharge(amount: Int(total * 100)) { _ in }
+    }
+    func createOpenBankingPayment() {
+        guard let stripeAccount = auth.merchant?.stripe_account_id else {
+            print("❌ Missing stripe_account_id")
+            return
+        }
+
+        // Step 1: Create the PaymentIntent
+        let createUrl = URL(string: "https://v0-pos-mvp.vercel.app/api/create-openbanking-payment")!
+        var createRequest = URLRequest(url: createUrl)
+        createRequest.httpMethod = "POST"
+        createRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "amount": Int(total * 100),
+            "currency": "gbp",
+            "stripeAccount": stripeAccount
+        ]
+        createRequest.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: createRequest) { data, _, error in
+            if let error = error {
+                print("❌ Failed to create PaymentIntent:", error.localizedDescription)
+                return
+            }
+
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let intentId = json["id"] as? String else {
+                print("❌ Invalid response from create endpoint")
+                return
+            }
+
+            print("✅ Created PaymentIntent:", intentId)
+            DispatchQueue.main.async {
+                self.openBankingPaymentIntentId = intentId
+            }
+
+            // Step 2: Confirm the PaymentIntent to get redirect URL
+            let confirmUrl = URL(string: "https://v0-pos-mvp.vercel.app/api/confirm-openbanking-payment")!
+            var confirmRequest = URLRequest(url: confirmUrl)
+            confirmRequest.httpMethod = "POST"
+            confirmRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+            let confirmPayload: [String: Any] = [
+                "payment_intent_id": intentId,
+                "stripeAccount": stripeAccount
+            ]
+            confirmRequest.httpBody = try? JSONSerialization.data(withJSONObject: confirmPayload)
+
+            URLSession.shared.dataTask(with: confirmRequest) { confirmData, _, confirmError in
+                if let confirmError = confirmError {
+                    print("❌ Failed to confirm PaymentIntent:", confirmError.localizedDescription)
+                    return
+                }
+
+                // Logging before JSON parsing
+                guard let confirmData = confirmData else {
+                    print("❌ No confirmData returned")
+                    return
+                }
+                if let raw = String(data: confirmData, encoding: .utf8) {
+                    print("📦 Confirm response raw JSON:", raw)
+                }
+                guard let confirmJson = try? JSONSerialization.jsonObject(with: confirmData) as? [String: Any] else {
+                    print("❌ Could not parse JSON")
+                    return
+                }
+                guard let redirectURL = confirmJson["redirect_url"] as? String else {
+                    print("❌ redirect_url missing in parsed JSON:", confirmJson)
+                    return
+                }
+
+                print("✅ Open Banking redirect URL:", redirectURL)
+
+                DispatchQueue.main.async {
+                    self.openBankingRedirectURL = redirectURL
+                    self.pollOpenBankingStatus()
+                }
+            }.resume()
+        }.resume()
+    }
+
+    func pollOpenBankingStatus() {
+        guard let intentId = openBankingPaymentIntentId,
+              let stripeAccount = auth.merchant?.stripe_account_id else { return }
+
+        let url = URL(string: "https://v0-pos-mvp.vercel.app/api/get-payment-intent-status")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "payment_intent_id": intentId,
+            "stripeAccount": stripeAccount
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let status = json["status"] as? String else {
+                print("❌ Failed to fetch PaymentIntent status")
+                return
+            }
+
+            print("📡 PaymentIntent status: \(status)")
+            if status == "succeeded" {
+                DispatchQueue.main.async {
+                    self.openBankingPaid = true
+                    self.paymentMethodUsed = "open-banking"
+                    self.extraMessage = nil
+                    self.showPaymentSuccess = true
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    self.pollOpenBankingStatus()
+                }
+            }
+        }.resume()
+    }
+
+    func generateQRCode(from string: String) -> UIImage? {
+        let data = string.data(using: .utf8)
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("Q", forKey: "inputCorrectionLevel")
+
+        guard let outputImage = filter.outputImage else { return nil }
+
+        let transform = CGAffineTransform(scaleX: 10, y: 10)
+        let scaledImage = outputImage.transformed(by: transform)
+
+        let context = CIContext()
+        if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+
+        return nil
     }
 }
 
@@ -328,3 +640,4 @@ class _SimulatedDiscoveryDelegate: NSObject, DiscoveryDelegate {
         onReadersUpdate(readers)
     }
 }
+

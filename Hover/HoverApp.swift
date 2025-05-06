@@ -4,9 +4,6 @@ import StripeTerminal
 
 let isLive = true
 
-var stripeLocationId: String {
-    isLive ? "tml_GBHd6w8AIWbPOL" : "tml_GA6b6wmVQloBTz"
-}
 
 var apiBaseURL: String {
     isLive ? "https://v0-pos-mvp.vercel.app" : "http://192.168.1.204:3000"
@@ -14,12 +11,15 @@ var apiBaseURL: String {
 
 @main
 struct HoverApp: App {
-    var discoveryDelegate: DummyDiscoveryDelegate
+    @StateObject var auth: AuthManager
+    var discoveryDelegate: DummyDiscoveryDelegate?
+
     @State private var isReady = false
 
     init() {
-        let delegate = DummyDiscoveryDelegate()
-        self.discoveryDelegate = delegate
+        let authInstance = AuthManager()
+        _auth = StateObject(wrappedValue: authInstance)
+        self.discoveryDelegate = DummyDiscoveryDelegate(auth: authInstance)
     }
     
     @UIApplicationDelegateAdaptor(StripeSetupDelegate.self) var stripeDelegate
@@ -29,7 +29,9 @@ struct HoverApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if isReady {
+                if !auth.isLoggedIn {
+                    LoginView()
+                } else if isReady {
                     MainView()
                         .environmentObject(cartManager)
                         .environmentObject(productCache)
@@ -37,19 +39,24 @@ struct HoverApp: App {
                     ProgressView("Loading...")
                 }
             }
-            .task(id: "startup") {
-                await performStartup()
+            .environmentObject(auth)
+            .task(id: auth.isLoggedIn ? "startup" : "no-startup") {
+                if auth.isLoggedIn {
+                    await performStartup()
+                }
             }
         }
     }
     
     private func performStartup() async {
         print("🛠 performStartup() task has started")
+        print("🔐 isLoggedIn =", auth.isLoggedIn)
+        print("🔐 accessToken =", auth.accessToken ?? "nil")
         print("🟡 Starting setup in HoverApp")
         print("🧪 isLive: \(isLive)")
-        print("🧪 stripeLocationId: \(stripeLocationId)")
+        // print("🧪 stripeLocationId: \(stripeLocationId)")
         print("🧪 apiBaseURL: \(apiBaseURL)")
-        // --- Stripe and App Diagnostics Begin ---
+        
         if let modes = Bundle.main.infoDictionary?["UIBackgroundModes"] as? [String] {
             print("📦 UIBackgroundModes at runtime: \(modes)")
         } else {
@@ -67,30 +74,70 @@ struct HoverApp: App {
         } else {
             print("⚠️ NSLocationWhenInUseUsageDescription is MISSING at runtime")
         }
-        // --- Stripe and App Diagnostics End ---
+
         print("✅ Stripe Terminal token provider has been set")
-        
+
+        guard auth.isLoggedIn, let token = auth.accessToken else {
+            print("⚠️ No logged-in user or token available. Skipping merchant fetch and catalog load.")
+            return
+        }
+
+        guard let url = URL(string: "\(apiBaseURL)/api/merchant") else {
+            print("❌ Invalid merchant API URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
         do {
-            let config = try TapToPayDiscoveryConfigurationBuilder().build()
-            Terminal.shared.discoverReaders(config, delegate: discoveryDelegate) { error in
-                if let error = error {
-                    print("❌ Discovery error: \(error)")
-                } else {
-                    print("✅ Reader discovery started from HoverApp")
+            let (data, _) = try await URLSession.shared.data(for: request)
+            print("📦 Raw merchant response: \(String(data: data, encoding: .utf8) ?? "nil")")
+
+            let merchant = try JSONDecoder().decode(Merchant.self, from: data)
+            print("✅ Merchant loaded: \(merchant)")
+
+            print("🟣 Calling loadAllProducts() on ProductCache")
+            await productCache.loadAllProducts()
+            print("✅ Finished loading \(productCache.productsByBarcode.count) products")
+
+            let currentAuth = self.auth
+            DispatchQueue.main.async {
+                currentAuth.merchant = merchant
+
+                Terminal.setTokenProvider(StripeConnectionTokenProvider(auth: currentAuth))
+
+                do {
+                    let configBuilder = TapToPayDiscoveryConfigurationBuilder()
+                    let config = try configBuilder.build()
+                    Terminal.shared.discoverReaders(config, delegate: discoveryDelegate!) { error in
+                        if let error = error {
+                            print("❌ Discovery error: \(error)")
+                        } else {
+                            print("✅ Reader discovery started from HoverApp")
+                        }
+                    }
+                } catch {
+                    print("❌ Failed to start Tap to Pay discovery: \(error)")
                 }
+
+                self.isReady = true
             }
         } catch {
-            print("❌ Failed to start Tap to Pay discovery: \(error)")
+            print("❌ Failed to fetch merchant or load products: \(error)")
+            DispatchQueue.main.async {
+                self.isReady = true  // fallback to avoid spinner lock
+            }
         }
-        print("🟣 Calling loadAllProducts() on ProductCache")
-        await productCache.loadAllProducts()
-        print("✅ Finished loading \(productCache.productsByBarcode.count) products")
-        isReady = true
     }
 }
 
 class DummyDiscoveryDelegate: NSObject, DiscoveryDelegate, TapToPayReaderDelegate, InternetReaderDelegate {
-    override init() {
+    let auth: AuthManager
+
+    init(auth: AuthManager) {
+        self.auth = auth
         super.init()
         print("📡 DummyDiscoveryDelegate initialized")
     }
@@ -114,9 +161,14 @@ class DummyDiscoveryDelegate: NSObject, DiscoveryDelegate, TapToPayReaderDelegat
             let connectionConfig: ConnectionConfiguration
             if selectedReader.deviceType.rawValue == 11 {
                 // Tap to Pay on iPhone
+                guard let locationId = auth.merchant?.terminal_location_id else {
+                    print("❌ terminal_location_id is missing; cannot connect to Tap to Pay reader.")
+                    return
+                }
+
                 connectionConfig = try! TapToPayConnectionConfigurationBuilder(
                     delegate: self,
-                    locationId: stripeLocationId
+                    locationId: locationId
                 ).build()
             } else {
                 // Simulated reader fallback
@@ -199,4 +251,15 @@ class DummyDiscoveryDelegate: NSObject, DiscoveryDelegate, TapToPayReaderDelegat
 
 extension Notification.Name {
     static let paymentDidFailOrCancel = Notification.Name("paymentDidFailOrCancel")
+}
+
+// MARK: - Models
+
+struct Merchant: Decodable {
+    let id: String
+    let stripe_account_id: String
+    let terminal_location_id: String?
+    let user_id: String
+    let status: String
+    let settings: [String: String]?
 }

@@ -52,6 +52,19 @@ struct CartView: View {
                         .cornerRadius(10)
                 }
                 .padding()
+
+                Button(action: {
+                    let testProduct = Product(id: "test-2", name: "Test Open Banking £0.50", price: 0.50)
+                    cartManager.add(product: testProduct)
+                }) {
+                    Text("🧪 Add £0.50 Open Banking Test Product")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .padding()
             }
             .onReceive(NotificationCenter.default.publisher(for: .paymentDidFailOrCancel)) { _ in
                 cartManager.paymentInProgress = false

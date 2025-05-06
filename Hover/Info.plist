@@ -11,13 +11,13 @@
     <array>
         <string>bluetooth-central</string>
     </array>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>We use Bluetooth to discover and simulate card readers for checkout.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>This app uses Bluetooth to communicate with payment readers.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Location access is required to discover and connect to payment readers nearby.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>We use the camera to scan product barcodes.</string>
 </dict>
-<key>NSBluetoothAlwaysUsageDescription</key>
-<string>We use Bluetooth to discover and simulate card readers for checkout.</string>
-<key>NSBluetoothPeripheralUsageDescription</key>
-<string>This app uses Bluetooth to communicate with payment readers.</string>
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>Location access is required to discover and connect to payment readers nearby.</string>
-<key>NSCameraUsageDescription</key>
-<string>We use the camera to scan product barcodes.</string>
 </plist>
