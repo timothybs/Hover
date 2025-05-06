@@ -20,7 +20,7 @@ struct PaymentSuccessView: View {
             Text("Paid \(NumberFormatter.gbpCurrency.string(from: NSNumber(value: amount)) ?? "£\(amount)")")
                 .font(.headline)
 
-            Text("via \(paymentMethod == "open-banking" ? "Open Banking" : "Tap to Pay")")
+            Text("via \(formattedMethodLabel())")
                 .foregroundColor(.gray)
             
             if let extra = extraMessage {
@@ -131,6 +131,19 @@ struct PaymentSuccessView: View {
     func resetAndDismiss() {
         onReset()
         // dismiss()
+    }
+
+    func formattedMethodLabel() -> String {
+        switch paymentMethod {
+        case "open-banking":
+            return "Open Banking"
+        case "cash":
+            return "Cash"
+        case "tap-to-pay":
+            return "Tap to Pay"
+        default:
+            return paymentMethod.capitalized
+        }
     }
 }
 

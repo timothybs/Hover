@@ -280,6 +280,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
 }
 
 struct CheckoutView: View {
+    @Environment(\.dismiss) var dismiss
     @EnvironmentObject var cartManager: CartManager
     @StateObject private var terminalManager: StripeTerminalManager
     @State private var showResult = false
@@ -295,6 +296,8 @@ struct CheckoutView: View {
     @State private var paymentMethodUsed: String = ""
     @State private var extraMessage: String? = nil
     @State private var shouldRouteToSuccessAfterSheet = false
+    @State private var customTenderAmount: String = ""
+    @FocusState private var isCashFieldFocused: Bool
     
     init() {
         // This init will be overridden by body init, so we keep it empty
@@ -382,6 +385,8 @@ struct CheckoutView: View {
                     }
                     .padding(.horizontal)
                     Button("💵 Pay Cash") {
+                        openBankingRedirectURL = nil
+                        cashChangeDue = nil
                         showingCashSheet = true
                     }
                     .frame(maxWidth: .infinity)
@@ -428,28 +433,9 @@ struct CheckoutView: View {
             // Inline Cash Payment UI
             if showingCashSheet {
                 VStack(spacing: 16) {
-                    Text("Enter Cash Tendered")
-                        .font(.headline)
-
-                    HStack {
-                        ForEach([5.0, 10.0, 15.0, 20.0], id: \.self) { amount in
-                            Button("£\(Int(amount))") {
-                                cashTendered = amount
-                            }
-                            .padding()
-                            .background(Color.gray.opacity(0.2))
-                            .cornerRadius(8)
-                        }
-                    }
-
                     if let tendered = cashTendered {
                         let change = tendered - total
-                        Text("Change due: £\(String(format: "%.2f", max(0, change)))")
-                            .font(.title2)
-                            .foregroundColor(change >= 0 ? .green : .red)
-                            .padding(.top)
-
-                        Button("Confirm Payment") {
+                        Button(action: {
                             let changeString = "Change due: £\(String(format: "%.2f", max(0, change)))"
                             cashChangeDue = changeString
                             paymentSuccess = true
@@ -457,12 +443,42 @@ struct CheckoutView: View {
                             paymentMethodUsed = "cash"
                             extraMessage = changeString
                             showPaymentSuccess = true
+                        }) {
+                            Text("Change due: £\(String(format: "%.2f", max(0, change)))")
+                                .font(.title2)
+                                .foregroundColor(change >= 0 ? .green : .red)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(10)
                         }
+                    }
+
+                    TextField("Or enter custom amount", text: $customTenderAmount)
+                        .keyboardType(.decimalPad)
                         .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                        .onChange(of: customTenderAmount) { newValue in
+                            if let value = Double(newValue) {
+                                cashTendered = value
+                            }
+                        }
+                        .focused($isCashFieldFocused)
+
+                    Text("Enter Cash Tendered")
+                        .font(.headline)
+
+                    HStack {
+                        ForEach([5.0, 10.0, 15.0, 20.0], id: \.self) { amount in
+                            Button("£\(Int(amount))") {
+                                cashTendered = amount
+                                customTenderAmount = ""
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(8)
+                        }
                     }
                 }
                 .padding()
@@ -481,8 +497,14 @@ struct CheckoutView: View {
                     openBankingPaymentIntentId = nil
                     cashChangeDue = nil
                     showPaymentSuccess = false
+                    showingCashSheet = false
+                    isCashFieldFocused = false
+                    cashTendered = nil
+                    customTenderAmount = ""
+                    dismiss()
                 }
             )
+            .navigationBarBackButtonHidden(true)
         }
     }
     func connectToReaderAndCharge() {

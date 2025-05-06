@@ -76,21 +76,35 @@ struct BarcodeScannerScreen: View {
     @State private var lastScannedCode: String? = nil
 
     var body: some View {
-        BarcodeScannerView { scannedCode in
-            guard scannedCode != lastScannedCode else { return }
-            lastScannedCode = scannedCode
+        ZStack(alignment: .topLeading) {
+            BarcodeScannerView { scannedCode in
+                guard scannedCode != lastScannedCode else { return }
+                lastScannedCode = scannedCode
 
-            print("Scanned code: \(scannedCode)")
+                print("Scanned code: \(scannedCode)")
 
-            if let product = productCache.product(for: scannedCode) {
-                print("🛒 Found locally cached product: \(product.name)")
-                cartManager.add(product: product)
-            } else {
-                print("⚠️ No match found in local product cache")
+                if let product = productCache.product(for: scannedCode) {
+                    print("🛒 Found locally cached product: \(product.name)")
+                    cartManager.add(product: product)
+                } else {
+                    print("⚠️ No match found in local product cache")
+                }
+                dismiss()
             }
-            dismiss()
+            .edgesIgnoringSafeArea(.all)
+
+            Button(action: {
+                dismiss()
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .resizable()
+                    .frame(width: 32, height: 32)
+                    .foregroundColor(.white)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(Circle())
+                    .padding()
+            }
         }
-        .edgesIgnoringSafeArea(.all)
     }
 }
 
