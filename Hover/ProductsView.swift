@@ -71,10 +71,7 @@ struct ProductsView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showingScanner) {
-                BarcodeScannerView { scannedCode in
-                    searchText = scannedCode
-                    showingScanner = false
-                }
+                BarcodeScannerScreen()
             }
         }
     }
