@@ -54,13 +54,7 @@ struct MainView: View {
                 }
             }
             .navigationDestination(isPresented: $showingMenu) {
-                VStack {
-                    Text("Settings and other options")
-                        .font(.title)
-                        .padding()
-                    Spacer()
-                }
-                .navigationTitle("Settings")
+                SettingsView()
             }
         }
     }

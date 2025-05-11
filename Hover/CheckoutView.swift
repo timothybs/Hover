@@ -80,7 +80,7 @@ class MyMobileReaderDelegate: NSObject, MobileReaderDelegate {
 class StripeTerminalManager: NSObject, ObservableObject {
     private var readerDelegate: MyMobileReaderDelegate?
     private var discoveryDelegate: _SimulatedDiscoveryDelegate?
-    private var paymentCompletion: ((Bool) -> Void)?
+    private var paymentCompletion: ((Bool, String?) -> Void)?
     var auth: AuthManager
     
     init(auth: AuthManager) {
@@ -88,23 +88,23 @@ class StripeTerminalManager: NSObject, ObservableObject {
         super.init()
     }
     
-    func connectAndCharge(amount: Int, currency: String = "gbp", completion: @escaping (Bool) -> Void) {
+    func connectAndCharge(amount: Int, currency: String = "gbp", completion: @escaping (Bool, String?) -> Void) {
         // If already connected, skip discovery and start payment flow
         if Terminal.shared.connectionStatus == .connected {
             print("✅ Already connected to reader. Skipping discovery.")
-            self.startPaymentFlow(amount: amount, currency: currency)
+            self.startPaymentFlow(amount: amount, currency: currency, completion: completion)
             return
         }
-        self.paymentCompletion = { success in
+        self.paymentCompletion = { success, stripeId in
             DispatchQueue.main.async {
-                completion(success)
+                completion(success, stripeId)
             }
         }
         let builder = BluetoothScanDiscoveryConfigurationBuilder()
         builder.setSimulated(true)
         guard let discoveryConfig = try? builder.build() else {
             print("❌ Failed to build discovery config")
-            completion(false)
+            completion(false, nil)
             return
         }
 
@@ -133,11 +133,11 @@ class StripeTerminalManager: NSObject, ObservableObject {
                 if let error = error {
                     print("Connection failed: \(error)")
                     DispatchQueue.main.async {
-                        self.paymentCompletion?(false)
+                        self.paymentCompletion?(false, nil)
                     }
                 } else if let connectedReader = connectedReader {
                     print("Connected to reader: \(connectedReader.serialNumber)")
-                    self.startPaymentFlow(amount: amount, currency: currency)
+                    self.startPaymentFlow(amount: amount, currency: currency, completion: self.paymentCompletion)
                 }
             }
         })
@@ -148,20 +148,20 @@ class StripeTerminalManager: NSObject, ObservableObject {
             if let error = error {
                 print("❌ Reader discovery failed: \(error)")
                 DispatchQueue.main.async {
-                    self.paymentCompletion?(false)
+                    self.paymentCompletion?(false, nil)
                 }
             } else {
                 print("✅ Reader discovery started")
             }
         }
     }
-
-    private func startPaymentFlow(amount: Int, currency: String) {
+    
+    private func startPaymentFlow(amount: Int, currency: String, completion: ((Bool, String?) -> Void)?) {
         let url = URL(string: "https://v0-pos-mvp.vercel.app/api/create-payment-intent")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        let stripeAccount = auth.merchant?.stripe_account_id ?? ""
+        let stripeAccount = auth.merchant?.stripeAccountId ?? ""
         let body: [String: Any] = [
             "amount": amount,
             "currency": currency,
@@ -173,7 +173,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
             if let error = error {
                 print("Failed to create PaymentIntent: \(error)")
                 DispatchQueue.main.async {
-                    self.paymentCompletion?(false)
+                    completion?(false, nil)
                 }
                 return
             }
@@ -183,7 +183,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
                   let clientSecret = json["client_secret"] as? String else {
                 print("Invalid response")
                 DispatchQueue.main.async {
-                    self.paymentCompletion?(false)
+                    completion?(false, nil)
                 }
                 return
             }
@@ -192,7 +192,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
                 if let error = error {
                     print("❌ Failed to retrieve PaymentIntent: \(error)")
                     DispatchQueue.main.async {
-                        self.paymentCompletion?(false)
+                        completion?(false, nil)
                     }
                     return
                 }
@@ -200,7 +200,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
                 guard let paymentIntent = paymentIntent else {
                     print("❌ No PaymentIntent returned")
                     DispatchQueue.main.async {
-                        self.paymentCompletion?(false)
+                        completion?(false, nil)
                     }
                     return
                 }
@@ -215,7 +215,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
                             print("❌ Failed to collect payment: \(error)")
                         }
                         DispatchQueue.main.async {
-                            self.paymentCompletion?(false)
+                            completion?(false, nil)
                         }
                         return
                     }
@@ -223,7 +223,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
                     guard let collectedIntent = paymentIntent else {
                         print("❌ No PaymentIntent collected")
                         DispatchQueue.main.async {
-                            self.paymentCompletion?(false)
+                            completion?(false, nil)
                         }
                         return
                     }
@@ -232,7 +232,7 @@ class StripeTerminalManager: NSObject, ObservableObject {
                         if let error = error {
                             print("❌ Failed to confirm PaymentIntent on reader: \(error)")
                             DispatchQueue.main.async {
-                                self.paymentCompletion?(false)
+                                completion?(false, nil)
                             }
                             return
                         }
@@ -241,20 +241,20 @@ class StripeTerminalManager: NSObject, ObservableObject {
                               let stripeId = confirmedIntent.stripeId else {
                             print("❌ Confirmed PaymentIntent is missing stripeId")
                             DispatchQueue.main.async {
-                                self.paymentCompletion?(false)
+                                completion?(false, nil)
                             }
                             return
                         }
 
                         print("✅ Confirmed on reader. Now sending to backend for capture: \(stripeId)")
-                        self.confirmPaymentIntentOnBackend(paymentIntentId: stripeId)
+                        self.confirmPaymentIntentOnBackend(paymentIntentId: stripeId, completion: completion)
                     }
                 })
             })
         }.resume()
     }
     
-    private func confirmPaymentIntentOnBackend(paymentIntentId: String) {
+    private func confirmPaymentIntentOnBackend(paymentIntentId: String, completion: ((Bool, String?) -> Void)?) {
         let url = URL(string: "https://v0-pos-mvp.vercel.app/api/confirm-payment-intent")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -266,14 +266,54 @@ class StripeTerminalManager: NSObject, ObservableObject {
             if let error = error {
                 print("❌ Failed to confirm payment intent: \(error)")
                 DispatchQueue.main.async {
-                    self.paymentCompletion?(false)
+                    completion?(false, paymentIntentId)
                 }
                 return
             }
 
             print("✅ Payment confirmed!")
+            // After successful payment confirmation, save order to Supabase
             DispatchQueue.main.async {
-                self.paymentCompletion?(true)
+                completion?(true, paymentIntentId)
+                // Post notification or callback to save order if needed
+                // (You may want to pass order details here; see usage in CheckoutView)
+            }
+        }.resume()
+    }
+
+    // MARK: - Supabase Order Saving
+    func saveOrderToSupabase(order: [String: Any]) {
+        guard
+            let supabaseURL = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
+            let anonKey = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String,
+            let url = URL(string: "\(supabaseURL)/rest/v1/orders")
+        else {
+            print("❌ Missing Supabase config values")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        let accessToken = auth.session?.accessToken ?? anonKey
+        request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.addValue(anonKey, forHTTPHeaderField: "apikey") // Required by Supabase
+        request.httpBody = try? JSONSerialization.data(withJSONObject: order)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ Failed to save order: \(error)")
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 Supabase response status: \(httpResponse.statusCode)")
+            }
+
+            if let data = data, let responseText = String(data: data, encoding: .utf8) {
+                print("📨 Supabase response body: \(responseText)")
+            } else {
+                print("⚠️ No data in Supabase response")
             }
         }.resume()
     }
@@ -346,12 +386,29 @@ struct CheckoutView: View {
                     .padding()
                     
                     Button(action: {
-                        terminalManager.connectAndCharge(amount: Int(total * 100)) { success in
+                        terminalManager.connectAndCharge(amount: Int(total * 100)) { success, stripeId in
                             DispatchQueue.main.async {
                                 if success {
                                     paymentSuccess = true
                                     paymentMethodUsed = "tap-to-pay"
                                     extraMessage = nil
+                                    // Save order to Supabase
+                                    let items: [[String: Any]] = cartManager.items.compactMap {
+                                        guard let productDict = $0.key.toDictionary() else { return nil }
+                                        return [
+                                            "product": productDict,
+                                            "quantity": $0.value
+                                        ]
+                                    }
+                                    let order: [String: Any] = [
+                                        "items": items,
+                                        "total": total,
+                                        "payment_method": "tap-to-pay",
+                                        "created_at": ISO8601DateFormatter().string(from: Date()),
+                                        "merchant_id": auth.merchant?.id ?? "unknown",
+                                        "payment_intent_id": stripeId ?? ""
+                                    ]
+                                    terminalManager.saveOrderToSupabase(order: order)
                                     showPaymentSuccess = true
                                 } else {
                                     cartManager.clearCart()
@@ -442,6 +499,22 @@ struct CheckoutView: View {
                             showingCashSheet = false
                             paymentMethodUsed = "cash"
                             extraMessage = changeString
+                            // Save order to Supabase for cash payment
+                            let items: [[String: Any]] = cartManager.items.compactMap {
+                                guard let productDict = $0.key.toDictionary() else { return nil }
+                                return [
+                                    "product": productDict,
+                                    "quantity": $0.value
+                                ]
+                            }
+                            let order: [String: Any] = [
+                                "items": items,
+                                "total": total,
+                                "payment_method": "cash",
+                                "created_at": ISO8601DateFormatter().string(from: Date()),
+                                "merchant_id": auth.merchant?.id ?? "unknown"
+                            ]
+                            terminalManager.saveOrderToSupabase(order: order)
                             showPaymentSuccess = true
                         }) {
                             Text("Change due: £\(String(format: "%.2f", max(0, change)))")
@@ -508,11 +581,13 @@ struct CheckoutView: View {
         }
     }
     func connectToReaderAndCharge() {
-        terminalManager.connectAndCharge(amount: Int(total * 100)) { _ in }
+        terminalManager.connectAndCharge(amount: Int(total * 100)) { success, stripeId in
+            print("📡 connectToReaderAndCharge result: \(success ? "Success" : "Failure"), stripeId: \(stripeId ?? "-")")
+        }
     }
     func createOpenBankingPayment() {
-        guard let stripeAccount = auth.merchant?.stripe_account_id else {
-            print("❌ Missing stripe_account_id")
+        guard let stripeAccount = auth.merchant?.stripeAccountId else {
+            print("❌ Missing stripeAccountId")
             return
         }
 
@@ -594,7 +669,7 @@ struct CheckoutView: View {
 
     func pollOpenBankingStatus() {
         guard let intentId = openBankingPaymentIntentId,
-              let stripeAccount = auth.merchant?.stripe_account_id else { return }
+              let stripeAccount = auth.merchant?.stripeAccountId else { return }
 
         let url = URL(string: "https://v0-pos-mvp.vercel.app/api/get-payment-intent-status")!
         var request = URLRequest(url: url)
@@ -621,6 +696,23 @@ struct CheckoutView: View {
                     self.openBankingPaid = true
                     self.paymentMethodUsed = "open-banking"
                     self.extraMessage = nil
+                    // Save order to Supabase for open banking
+                    let items: [[String: Any]] = cartManager.items.compactMap {
+                        guard let productDict = $0.key.toDictionary() else { return nil }
+                        return [
+                            "product": productDict,
+                            "quantity": $0.value
+                        ]
+                    }
+                    let order: [String: Any] = [
+                        "items": items,
+                        "total": total,
+                        "payment_method": "open-banking",
+                        "created_at": ISO8601DateFormatter().string(from: Date()),
+                        "merchant_id": auth.merchant?.id ?? "unknown",
+                        "payment_intent_id": intentId
+                    ]
+                    self.terminalManager.saveOrderToSupabase(order: order)
                     self.showPaymentSuccess = true
                 }
             } else {
@@ -662,4 +754,7 @@ class _SimulatedDiscoveryDelegate: NSObject, DiscoveryDelegate {
         onReadersUpdate(readers)
     }
 }
+
+
+
 

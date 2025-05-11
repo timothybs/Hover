@@ -1,3 +1,14 @@
+// AppDelegate to enforce portrait orientation globally
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        return .portrait
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+    }
+}
+
 import ProximityReader
 import SwiftUI
 import StripeTerminal
@@ -11,10 +22,12 @@ var apiBaseURL: String {
 
 @main
 struct HoverApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject var auth: AuthManager
     var discoveryDelegate: DummyDiscoveryDelegate?
 
     @State private var isReady = false
+    @AppStorage("colorSchemeOption") private var selectedColorScheme: ColorSchemeOption = .system
 
     init() {
         let authInstance = AuthManager()
@@ -40,6 +53,13 @@ struct HoverApp: App {
                 }
             }
             .environmentObject(auth)
+            .preferredColorScheme({
+                switch selectedColorScheme {
+                case .system: return nil
+                case .light: return .light
+                case .dark: return .dark
+                }
+            }())
             .task(id: auth.isLoggedIn ? "startup" : "no-startup") {
                 if auth.isLoggedIn {
                     await performStartup()
@@ -161,7 +181,7 @@ class DummyDiscoveryDelegate: NSObject, DiscoveryDelegate, TapToPayReaderDelegat
             let connectionConfig: ConnectionConfiguration
             if selectedReader.deviceType.rawValue == 11 {
                 // Tap to Pay on iPhone
-                guard let locationId = auth.merchant?.terminal_location_id else {
+                guard let locationId = auth.merchant?.terminalLocationId else {
                     print("❌ terminal_location_id is missing; cannot connect to Tap to Pay reader.")
                     return
                 }
@@ -251,15 +271,4 @@ class DummyDiscoveryDelegate: NSObject, DiscoveryDelegate, TapToPayReaderDelegat
 
 extension Notification.Name {
     static let paymentDidFailOrCancel = Notification.Name("paymentDidFailOrCancel")
-}
-
-// MARK: - Models
-
-struct Merchant: Decodable {
-    let id: String
-    let stripe_account_id: String
-    let terminal_location_id: String?
-    let user_id: String
-    let status: String
-    let settings: [String: String]?
 }
