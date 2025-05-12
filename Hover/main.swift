@@ -1,3 +1,11 @@
+//
+//  main.swift
+//  Hover
+//
+//  Created by Timothy Sumner on 12/05/2025.
+//
+
+
 import UIKit
 
 UIApplicationMain(
@@ -5,4 +13,5 @@ UIApplicationMain(
     CommandLine.unsafeArgv,
     nil,
     NSStringFromClass(AppDelegate.self)
+
 )

@@ -1,26 +1,25 @@
 // AppDelegate to enforce portrait orientation globally
-class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        return .portrait
-    }
+//class AppDelegate: NSObject, UIApplicationDelegate {
+//    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+//        return .portrait
+//    }
 
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-    }
-}
+//    func applicationDidBecomeActive(_ application: UIApplication) {
+//        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+//    }
+//}
 
 import ProximityReader
 import SwiftUI
 import StripeTerminal
 
-let isLive = true
+//let isLive = true
+//
+//
+//var apiBaseURL: String {
+//    isLive ? "https://v0-pos-mvp.vercel.app" : "http://192.168.1.204:3000"
+//}
 
-
-var apiBaseURL: String {
-    isLive ? "https://v0-pos-mvp.vercel.app" : "http://192.168.1.204:3000"
-}
-
-@main
 struct HoverApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject var auth: AuthManager
@@ -45,9 +44,11 @@ struct HoverApp: App {
                 if !auth.isLoggedIn {
                     LoginView()
                 } else if isReady {
-                    MainView()
-                        .environmentObject(cartManager)
-                        .environmentObject(productCache)
+                    PortraitLockedView {
+                        MainView()
+                            .environmentObject(cartManager)
+                            .environmentObject(productCache)
+                    }
                 } else {
                     ProgressView("Loading...")
                 }
